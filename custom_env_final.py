@@ -19,6 +19,7 @@ class Quadruped_Env(gym.Env):
         self.step_count = 0
         self.max_steps=1000
         self.dt = 0.02
+        self.num_envs = 8
 
         self.base_body_id = mujoco.mj_name2id(
             self.model,
@@ -166,8 +167,8 @@ class Quadruped_Env(gym.Env):
         return self.data.site_xpos[site_id][2]
     
     def _get_curriculum(self):
-        t = self.total_timesteps
-        if t <= 25e-6:
+        t = self.total_timesteps * self.num_envs
+        if t <= 25e6:
             k = 1 - np.cos(2 * np.pi * 1e-8 * t)
         else:
             k = 1
@@ -249,6 +250,7 @@ class Quadruped_Env(gym.Env):
             print("------TOTAL REWARD------")
             print(reward)
             print(f"Angular Velocity : {ang_vel[0]}x, {ang_vel[1]}y, {ang_vel[2]}z")
+            print(f"Total Timesteps: {self.total_timesteps * self.num_envs}")
             print("------------------------")
             
 
