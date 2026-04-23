@@ -324,8 +324,7 @@ class Quadruped_Env(gym.Env):
         r_smooth = -0.1 * np.sum(np.square(action - prev_action)) -0.1 * (np.sum(np.square(action - 2*prev_action + prev_prev)))
         #HEIGHT PENALTY
         z_height = self.data.qpos[2]
-        r_height = -3 * np.square(z_height - 0.35) #changed from -50 -> -30 for smoother learning at the beginning
-        
+        r_height = -10 * np.square(z_height - 0.35) #changed from -50 -> -30 for smoother learning at the beginning
         
         #Energy Penalty
         r_energy = - 0.0015 * np.sum(np.square(torques)) #weight changed from 0.0015 -> 0.0002 -> 0.0003 for reduced torque penalty

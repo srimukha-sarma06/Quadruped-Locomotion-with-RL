@@ -44,8 +44,8 @@ if __name__ == '__main__':
 
     checkpoint = CheckpointCallback(
         save_freq=10_000_000 // num_envs,
-        save_path="./checkpoints/ppo_finetune_8_envs_4",
-        name_prefix="quad_pd_ppo_finetune_8_envs_4"
+        save_path="./checkpoints/git_repo",
+        name_prefix="git_repo"
     )
 
     eval_callback = EvalCallback(
@@ -86,6 +86,6 @@ if __name__ == '__main__':
         raise
 
     finally:
-        model.save("quad_pd_ppo_finetune_8_envs_4")
-        env.save("vecnorm_pd_ppo_finetune_8_envs_4.pkl")
+        model.save("git_repo")
+        env.save("git_repo.pkl")
 

@@ -57,6 +57,10 @@ class Quadruped_Env(gym.Env):
         self.prev_prev = np.zeros(12)
         self.prev_action = np.zeros(12)
 
+        #pd controller parameters for deployment
+        self.qdes = np.zeros(12)
+        self.qvel = np.zeros(12)
+
         #Velocity logging 
         self.last_forward_vel = 0
 
@@ -393,20 +397,10 @@ class Quadruped_Env(gym.Env):
         # Alive Reward
         r_alive = 0.1 
 
-        #No contact penalty
-        r_no_contact = 0.0
-
-        contacts = [c_fl, c_fr, c_rl, c_rr]
-        total_contacts = sum(contacts)
-        if total_contacts == 0 or total_contacts == 1:
-            r_no_contact =- 2.0
-        elif total_contacts == 2:
-            r_no_contact += 0.3
-
         #getting the curriculum factor
         k = self._get_curriculum_param()
 
-        total = r_forward + r_ang_vel + r_alive + r_no_contact + k * (r_energy + r_height + r_orient  + r_z_vel + r_pose + r_slip + r_smooth + r_clear + r_yaw + r_lat)
+        total = r_forward + r_ang_vel + r_alive + k * (r_energy + r_height + r_orient  + r_z_vel + r_pose + r_slip + r_smooth + r_clear + r_yaw + r_lat)
 
         return total
 
