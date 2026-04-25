@@ -1,7 +1,7 @@
 import mujoco
 import mujoco.viewer
 from stable_baselines3 import PPO
-from custom_env_final import Quadruped_Env
+from custom_env_new import Quadruped_Env
 from stable_baselines3.common.vec_env import VecNormalize, SubprocVecEnv
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback

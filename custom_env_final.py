@@ -33,7 +33,7 @@ class Quadruped_Env(gym.Env):
         self.fid_rr = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "RR_shank_link")
         self.fid_rl = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "RL_shank_link")
 
-        #Domain Randomization
+        #Domain Randomization(body mass, friction initial values)
         self.default_friction = self.model.geom_friction[:, 0].copy()
         self.default_body_mass = self.model.body_mass[self.base_body_id]
 
@@ -45,7 +45,7 @@ class Quadruped_Env(gym.Env):
         self.calf_ids = [mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, name) for name in self.calves]
         self.thigh_ids = [mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, name) for name in self.thighs]
 
-        self.q_default = np.array([ #changed for stability
+        self.q_default = np.array([ 
             0.0, 0.9, -1.8, #FL
             0.0, 0.9, -1.8, #FR
             0.0, 0.9, -1.8, #RL
@@ -234,7 +234,7 @@ class Quadruped_Env(gym.Env):
         obs = self._get_obs()
         
         # Reward
-        reward, r_forward, r_orient, r_pose, r_smooth, r_height, r_ang_vel, air_time_reward,r_omega_xy, body_vel, ang_vel = self._compute_reward(torques, action, self.prev_action, self.prev_prev)
+        reward, r_forward, r_orient, r_pose, r_smooth, r_height, r_ang_vel, air_time_reward,r_omega_xy, body_vel, ang_vel, k = self._compute_reward(torques, action, self.prev_action, self.prev_prev)
         terminated = self._is_fallen()
         truncated = self.step_count >= self.max_steps
         if terminated or truncated:
@@ -251,6 +251,7 @@ class Quadruped_Env(gym.Env):
             print(reward)
             print(f"Angular Velocity : {ang_vel[0]}x, {ang_vel[1]}y, {ang_vel[2]}z")
             print(f"Total Timesteps: {self.total_timesteps * self.num_envs}")
+            print(f"Curriculum Factor: {k}")
             print("------------------------")
             
 
@@ -384,7 +385,7 @@ class Quadruped_Env(gym.Env):
 
         total = r_forward + r_height + k * (penalties)
 
-        return total, r_forward, r_orient, r_pose, r_smooth, r_height, r_ang_vel, air_time_reward,r_omega_xy, body_vel, ang_vel
+        return total, r_forward, r_orient, r_pose, r_smooth, r_height, r_ang_vel, air_time_reward,r_omega_xy, body_vel, ang_vel, k
 
     def _is_fallen(self):
         z_height = self.data.qpos[2]

@@ -52,7 +52,7 @@ class Quadruped_Env(gym.Env):
             0.0, 0.9, -1.8  #RR
         ])
 
-        self.total_timesteps = 2500000  #CHANGE TO 0 LATER!!!
+        self.total_timesteps = 0
 
         self.last_forward_vel = 0.0
 
@@ -344,7 +344,7 @@ class Quadruped_Env(gym.Env):
         r_ang_vel = 1.5 * np.exp(- 5 * (ang_vel[2] - self.target_ang_velocity[2])**2)
 
         #Action Smoothness Penalty
-        r_smooth = -0.5 * np.sum(np.square(action - prev_action)) -0.2 * (np.sum(np.square(action - 2*prev_action + prev_prev)))
+        r_smooth = -0.5 * np.sum(np.square(action - prev_action)) - 0.2 * (np.sum(np.square(action - 2*prev_action + prev_prev)))
 
         #Power loss penlaty
         tau_u = 0.0477
