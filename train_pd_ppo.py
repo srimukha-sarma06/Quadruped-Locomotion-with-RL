@@ -44,8 +44,8 @@ if __name__ == '__main__':
 
     checkpoint = CheckpointCallback(
         save_freq=10_000_000 // num_envs,
-        save_path="./checkpoints/git_repo",
-        name_prefix="git_repo"
+        save_path="./checkpoints/git_repo_2",
+        name_prefix="git_repo_2"
     )
 
     eval_callback = EvalCallback(
@@ -57,10 +57,10 @@ if __name__ == '__main__':
         render=False
     )
 
-    model = PPO(
-        "MlpPolicy",
+    model = PPO.load(
+        "checkpoints/git_repo_2/git_repo_2_20000000_steps.zip",
         env,
-        learning_rate=1e-4, 
+        learning_rate=5e-5, 
         gamma=0.99,
         gae_lambda=0.95,        # Factor for trade-off of bia vs variance(increased from 0.95 for smoothness)
         clip_range=0.2,         # Clipping parameter (crucial for PPO)
@@ -86,6 +86,6 @@ if __name__ == '__main__':
         raise
 
     finally:
-        model.save("git_repo")
-        env.save("git_repo.pkl")
+        model.save("git_repo_2")
+        env.save("git_repo_2.pkl")
 

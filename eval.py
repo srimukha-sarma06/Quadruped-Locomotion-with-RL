@@ -8,12 +8,12 @@ import time
 env = DummyVecEnv([lambda: Quadruped_Env(render_mode='human',
                                          xml_path='/media/srimukha-sarma/Windows-SSD/xtr_lair-main/src/robots/m2_metal_description/mujoco/flat_scene.xml')])
 
-env = VecNormalize.load('vecnorm_pd_ppo_finetune_8_envs_4.pkl', env)
+env = VecNormalize.load('git_repo.pkl', env)
 
 env.training = False
 env.norm_reward = False
 
-model = PPO.load('checkpoints/ppo_finetune_8_envs_4/quad_pd_ppo_finetune_8_envs_4_50000000_steps.zip', env=env, device="cpu")
+model = PPO.load('checkpoints/git_repo/git_repo_50000000_steps.zip', env=env, device="cpu")
 
 obs = env.reset()
 

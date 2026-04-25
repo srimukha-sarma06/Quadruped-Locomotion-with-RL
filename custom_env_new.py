@@ -52,7 +52,7 @@ class Quadruped_Env(gym.Env):
             0.0, 0.9, -1.8  #RR
         ])
 
-        self.total_timesteps = 0
+        self.total_timesteps = 2500000  #CHANGE TO 0 LATER!!!
 
         self.last_forward_vel = 0.0
 
@@ -113,7 +113,7 @@ class Quadruped_Env(gym.Env):
 
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(12,), dtype=np.float32) #.Box for continuos and .Discrete for discrete
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf,
-                                            shape=(48,), dtype=np.float32)
+                                            shape=(52,), dtype=np.float32)
         
         self.reset()
 
@@ -172,7 +172,7 @@ class Quadruped_Env(gym.Env):
     
     def _get_curriculum(self):
         t = self.total_timesteps * self.num_envs
-        if t <= 25e+6:
+        if t <= 25e6:
             k = 1 - np.cos(2 * np.pi * 1e-8 * t)
         else:
             k = 1
@@ -186,15 +186,13 @@ class Quadruped_Env(gym.Env):
         base_lin_vel = rot_mat.T @ self.data.qvel[0:3]
         base_ang_vel = rot_mat.T @ self.data.qvel[3:6]
 
-        '''
         c_fl = self._contact_state(self.fid_fl, 0, False)
         c_fr = self._contact_state(self.fid_fr, 1, False)
         c_rl = self._contact_state(self.fid_rl, 2, False)
         c_rr = self._contact_state(self.fid_rr, 3, False)
 
         contacts = np.array([c_fl, c_fr, c_rl, c_rr]).astype(np.float32)
-        '''
-
+        
         commands = self.command
 
         projected_gravity = rot_mat[:, 2]
@@ -208,6 +206,7 @@ class Quadruped_Env(gym.Env):
             base_lin_vel,
             projected_gravity,
             last_action,
+            contacts,
             commands
         ])
 
@@ -239,7 +238,7 @@ class Quadruped_Env(gym.Env):
         obs = self._get_obs()
         
         # Reward
-        reward, r_forward, r_ang_vel, r_clear, r_smooth, r_pose, r_slip, r_energy, r_orient, body_vel, ang_vel = self._compute_reward(torques, action, self.prev_action, self.prev_prev)
+        reward, r_forward, r_ang_vel, r_clear, r_smooth, r_pose, r_slip, r_energy, r_orient, body_vel, ang_vel, k = self._compute_reward(torques, action, self.prev_action, self.prev_prev)
         terminated = self._is_fallen()
         truncated = self.step_count >= self.max_steps
 
@@ -260,7 +259,8 @@ class Quadruped_Env(gym.Env):
             print("------TOTAL REWARD------")
             print(reward)
             print(f"Angular Velocity: {ang_vel[0]}x, {ang_vel[1]}y, {ang_vel[2]}z")
-            print(f"Total_timesteps: {self.total_timesteps}")
+            print(f"Total_timesteps: {self.total_timesteps * self.num_envs}")
+            print(f"Curriculum Factor : {k}")
             print("------------------------")
             self.velo_sum = 0.0
             self.velo_count = 0
@@ -303,10 +303,8 @@ class Quadruped_Env(gym.Env):
         self.prev_contacts = [False, False, False, False]
 
         # 2. Randomize Command (Target Velocity)
-        if self.total_timesteps <= 10e+6:
-            target_vx = np.random.uniform(0.3, 0.5)
-        else:
-            target_vx = np.random.uniform(0.3, 1.0)
+        # 2. Randomize Command (Target Velocity)
+        target_vx = np.random.uniform(0.5, 0.8)
         self.command = np.array([target_vx, 0.0, 0.0]) 
 
         # 3. Reset Pose (Standing)
@@ -416,7 +414,7 @@ class Quadruped_Env(gym.Env):
 
         total = r_forward + r_ang_vel + k * (penalties)
 
-        return total, r_forward, r_ang_vel, r_clear, r_smooth, r_pose, r_slip, r_energy, r_orient, body_vel, ang_vel
+        return total, r_forward, r_ang_vel, r_clear, r_smooth, r_pose, r_slip, r_energy, r_orient, body_vel, ang_vel, k
 
     def _is_fallen(self):
         z_height = self.data.qpos[2]

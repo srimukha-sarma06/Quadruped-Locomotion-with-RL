@@ -5,9 +5,6 @@ from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize, SubprocV
 from new_env_refined_3 import Quadruped_Env
 import time
 import numpy as np
-import serial
-
-ser = serial.Serial(port='', timeout=1, baudrate=9600) 
 
 env = DummyVecEnv([lambda: Quadruped_Env(render_mode='human',
                                          xml_path='/media/srimukha-sarma/Windows-SSD/xtr_lair-main/src/robots/m2_metal_description/mujoco/flat_scene.xml')])
