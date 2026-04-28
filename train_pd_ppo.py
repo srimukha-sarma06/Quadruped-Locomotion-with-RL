@@ -1,7 +1,7 @@
 import mujoco
 import mujoco.viewer
 from stable_baselines3 import PPO
-from custom_env_new import Quadruped_Env
+from custom_env_final import Quadruped_Env
 from stable_baselines3.common.vec_env import VecNormalize, SubprocVecEnv
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
@@ -44,8 +44,8 @@ if __name__ == '__main__':
 
     checkpoint = CheckpointCallback(
         save_freq=10_000_000 // num_envs,
-        save_path="./checkpoints/git_repo_2",
-        name_prefix="git_repo_2"
+        save_path="./checkpoints/git_repo_3",
+        name_prefix="git_repo_3"
     )
 
     eval_callback = EvalCallback(
@@ -57,24 +57,23 @@ if __name__ == '__main__':
         render=False
     )
 
-    model = PPO.load(
-        "checkpoints/git_repo_2/git_repo_2_20000000_steps.zip",
+    model = PPO(
+        "MlpPolicy",
         env,
-        learning_rate=5e-5, 
+        learning_rate=1e-4, 
         gamma=0.99,
         gae_lambda=0.95,        # Factor for trade-off of bia vs variance(increased from 0.95 for smoothness)
         clip_range=0.2,         # Clipping parameter (crucial for PPO)
-        ent_coef=0.001,         # Entropy coefficient (float, not "auto")
+        ent_coef=0.002,         # Entropy coefficient (float, not "auto")
         device="cpu",
         vf_coef=0.5,
-        n_epochs=10,
+        n_epochs=6,
         n_steps=1024,
         batch_size=512,
         policy_kwargs=policy_kwargs,
         max_grad_norm = 0.5,
         verbose=1,
-        tensorboard_log = './ppo_logs_3',
-        target_kl=0.05
+        tensorboard_log = './ppo_logs_3'
     )
     try:
         model.learn(
@@ -86,6 +85,6 @@ if __name__ == '__main__':
         raise
 
     finally:
-        model.save("git_repo_2")
-        env.save("git_repo_2.pkl")
+        model.save("git_repo_3")
+        env.save("git_repo_3.pkl")
 

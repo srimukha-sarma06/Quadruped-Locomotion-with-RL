@@ -280,13 +280,13 @@ class Quadruped_Env(gym.Env):
         self.model.body_mass[self.base_body_id] = self.default_body_mass * body_mass_mult 
 
         #Random values for Kp in +- 5 for dynamic randomization(only for post training)
-        #self.Kp_leg  = np.random.uniform(20, 30)
-        #self.Kp_hip = np.random.uniform(25, 35)
+        self.Kp_leg  = np.random.uniform(23, 27)
+        self.Kp_hip = np.random.uniform(28, 32)
 
         #Random values for Kd in += 0.1 for dyanamic randomization (onlt for post training)
         
-        #self.Kd_leg = np.random.uniform(0.5, 0.7)
-        #self.Kd_hip = np.random.uniform(0.7, 0.8)
+        self.Kd_leg = np.random.uniform(0.5, 0.7)
+        self.Kd_hip = np.random.uniform(0.7, 0.8)
 
         self.kp_leg = np.array([self.Kp_leg, self.Kp_leg, self.Kp_hip])
         self.Kp = np.tile(self.kp_leg, 4)
