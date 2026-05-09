@@ -1,12 +1,9 @@
-import mujoco
-import mujoco.viewer
 from stable_baselines3 import PPO
-from custom_env_final import Quadruped_Env
+from custom_env_new import Quadruped_Env
 from stable_baselines3.common.vec_env import VecNormalize, SubprocVecEnv
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
 import torch.nn as nn
-import torch
 from stable_baselines3.common.callbacks import BaseCallback
 
 class VelocityLogger(BaseCallback):
@@ -22,6 +19,7 @@ if __name__ == '__main__':
     def make_env():
         def _init():
             env = Quadruped_Env(render_mode='human')
+            env.enable_curriculum = True
             env = Monitor(env)
             return env
         return _init
@@ -44,7 +42,7 @@ if __name__ == '__main__':
 
     checkpoint = CheckpointCallback(
         save_freq=10_000_000 // num_envs,
-        save_path="./checkpoints/git_repo_3",
+        save_path="./checkpoints/git_repo_3_retrain_2",
         name_prefix="git_repo_3"
     )
 
@@ -63,12 +61,12 @@ if __name__ == '__main__':
         learning_rate=1e-4, 
         gamma=0.99,
         gae_lambda=0.95,        # Factor for trade-off of bia vs variance(increased from 0.95 for smoothness)
-        clip_range=0.2,         # Clipping parameter (crucial for PPO)
-        ent_coef=0.002,         # Entropy coefficient (float, not "auto")
+        clip_range=0.2,         
+        ent_coef=0.002,         
         device="cpu",
         vf_coef=0.5,
         n_epochs=6,
-        n_steps=1024,
+        n_steps=2048,
         batch_size=512,
         policy_kwargs=policy_kwargs,
         max_grad_norm = 0.5,
@@ -77,7 +75,7 @@ if __name__ == '__main__':
     )
     try:
         model.learn(
-            total_timesteps=50_000_000,
+            total_timesteps=30_000_000,
             callback=[checkpoint, VelocityLogger(), eval_callback],
         )
     except Exception as e:
@@ -85,6 +83,6 @@ if __name__ == '__main__':
         raise
 
     finally:
-        model.save("git_repo_3")
-        env.save("git_repo_3.pkl")
+        model.save("git_repo_3_retrain_2")
+        env.save("git_repo_3_retrain_2.pkl")
 

@@ -14,6 +14,8 @@ class Quadruped_Env(gym.Env):
         self.model = mujoco.MjModel.from_xml_path(xml_path)
         self.data = mujoco.MjData(self.model)
 
+        self.enable_curriculum = True
+
         self.render_mode = render_mode
         self.sim = None
         self.step_count = 0
@@ -61,29 +63,43 @@ class Quadruped_Env(gym.Env):
         self.prev_action = np.zeros(12)
 
         #target height for foot clearance
-        self.target_clearance_height = 0.1
+        self.target_clearance_height = 0.08
         
         #target angular velocity 
         self.target_ang_velocity = np.array([0.0, 0.0, 0.0])
 
-        #Sensor data ids
-        self.body_lin_vel = self.model.sensor("base_lin_vel").id
-        self.body_ang_vel = self.model.sensor("base_ang_vel").id
+        #Joint ids
+        self.adr_lin_vel    = self.model.sensor_adr[self.model.sensor("base_lin_vel").id]
+        self.adr_ang_vel    = self.model.sensor_adr[self.model.sensor("base_ang_vel").id]
+        self.adr_imu_ori    = self.model.sensor_adr[self.model.sensor("imu_orientation").id]
+        self.adr_cf_fl      = self.model.sensor_adr[self.model.sensor("contact_force_FL").id]
+        self.adr_cf_fr      = self.model.sensor_adr[self.model.sensor("contact_force_FR").id]
+        self.adr_cf_rl      = self.model.sensor_adr[self.model.sensor("contact_force_RL").id]
+        self.adr_cf_rr      = self.model.sensor_adr[self.model.sensor("contact_force_RR").id]
 
-        self.contact_force_fl = self.model.sensor("contact_force_FL").id
-        self.contact_force_fr = self.model.sensor("contact_force_FR").id
-        self.contact_force_rl = self.model.sensor("contact_force_RL").id
-        self.contact_force_rr = self.model.sensor("contact_force_RR").id
+        self.adr_force_calf_fl = self.model.sensor_adr[self.model.sensor("FL_calf_force_sensor").id]
+        self.adr_force_calf_fr = self.model.sensor_adr[self.model.sensor("FR_calf_force_sensor").id]
+        self.adr_force_calf_rl = self.model.sensor_adr[self.model.sensor("RL_calf_force_sensor").id]
+        self.adr_force_calf_rr = self.model.sensor_adr[self.model.sensor("RR_calf_force_sensor").id]
 
-        self.ang_vel_id = self.model.sensor("angular_velocity").id
 
-        self.imu_orientation_id = self.model.sensor("imu_orientation").id
+        self.joint_names = ["FL_hip_position_sensor", "FL_thigh_position_sensor", "FL_calf_position_sensor",
+                            "FR_hip_position_sensor", "FR_thigh_position_sensor", "FR_calf_position_sensor",
+                            "RL_hip_position_sensor", "RL_thigh_position_sensor", "RL_calf_position_sensor",
+                            "RR_hip_position_sensor", "RR_thigh_position_sensor", "RR_calf_position_sensor"]
+        
+        self.joint_vels = ["FL_hip_velocity_sensor", "FL_thigh_velocity_sensor", "FL_calf_velocity_sensor",
+                           "FR_hip_velocity_sensor", "FR_thigh_velocity_sensor", "FR_calf_velocity_sensor",
+                           "RL_hip_velocity_sensor", "RL_thigh_velocity_sensor", "RL_calf_velocity_sensor",
+                           "RR_hip_velocity_sensor", "RR_thigh_velocity_sensor", "RR_calf_velocity_sensor"]
+        
+        self.joint_ids = []
+        for name in self.joint_names:
+            self.joint_ids.append(self.model.sensor_adr[self.model.sensor(name).id])
 
-        self.joint_vel_start = self.model.sensor("FL_hip_velocity_sensor").id
-        self.joint_vel_end = self.model.sensor("RR_calf_velocity_sensor").id
-
-        self.joint_pos_start = self.model.sensor("FL_hip_position_sensor").id
-        self.joint_pos_end = self.model.sensor("RR_calf_position_sensor").id
+        self.joint_vel_ids = []
+        for name in self.joint_vels:
+            self.joint_vel_ids.append(self.model.sensor_adr[self.model.sensor(name).id])
 
         #Initial values
         self.Kp_leg = 25
@@ -131,6 +147,10 @@ class Quadruped_Env(gym.Env):
                                             shape=(52,), dtype=np.float32)
         
         self.reset()
+
+    def _site_address(self, name):
+        site_id = self.model.sensor(name).id
+        return self.model.sensor_adr[site_id]
 
     def _site_velocity(self, site_name):
         site_id = self.site_ids[site_name]
@@ -185,30 +205,34 @@ class Quadruped_Env(gym.Env):
         return self.data.site_xpos[site_id][2]
     
     def _get_curriculum(self):
-        t = self.total_timesteps * self.num_envs
-        if t <= 25e6:
-            k = 1 - np.cos(2 * np.pi * 1e-8 * t)
+        if self.enable_curriculum:
+            t = self.total_timesteps * self.num_envs
+            if t <= 25e6:
+                k = 1 - np.cos(2 * np.pi * 1e-8 * t)
+            else:
+                k = 1
         else:
             k = 1
         return k
     
     def _get_obs(self):
-        qpos = self.data.qpos[7 : 19] - self.q_default
-        qvel = self.data.qvel[6 : 18]
+        qpos = [self.data.sensordata[self.joint_ids[i]] for i in range(len(self.joint_ids))]
+        qvel = [self.data.sensordata[self.joint_vel_ids[i]] for i in range(len(self.joint_vel_ids))]
 
-        base_lin_vel = self.data.sensordata[self.body_lin_vel : self.body_lin_vel + 3]
-        base_ang_vel = self.data.sensordata[self.ang_vel_id : self.ang_vel_id + 3]
+        base_lin_vel = self.data.sensordata[self.adr_lin_vel : self.adr_lin_vel + 3]
+        base_ang_vel = self.data.sensordata[self.adr_ang_vel : self.adr_ang_vel + 3]
 
-        c_fl = self._contact_state(self.contact_force_fl, 0, False)
-        c_fr = self._contact_state(self.contact_force_fr, 1, False)
-        c_rl = self._contact_state(self.contact_force_rl, 2, False)
-        c_rr = self._contact_state(self.contact_force_rr, 3, False)
+        #Contact addresses 
+        c_fl = self._contact_state(self.adr_cf_fl, 0, False)
+        c_fr = self._contact_state(self.adr_cf_fr, 1, False)
+        c_rl = self._contact_state(self.adr_cf_rl, 2, False)
+        c_rr = self._contact_state(self.adr_cf_rr, 3, False)
 
         contacts = np.array([c_fl, c_fr, c_rl, c_rr]).astype(np.float32)
 
         commands = self.command
-
-        projected_gravity = self.data.sensordata[self.imu_orientation_id : self.imu_orientation_id + 4]
+    
+        projected_gravity = self.data.sensordata[self.adr_imu_ori : self.adr_imu_ori + 4]
         w, x, y, z = projected_gravity
         g_x = 2*(x*z - w*y)
         g_y = 2*(y*z + w*x)
@@ -236,8 +260,8 @@ class Quadruped_Env(gym.Env):
         q_des = self.q_default + action * self.q_range
 
         for _ in range(20):
-            q = self.data.qpos[7:19]
-            qd = self.data.qvel[6:18]
+            q = [self.data.sensordata[self.joint_ids[i]] for i in range(len(self.joint_ids))]
+            qd = [self.data.sensordata[self.joint_vel_ids[i]] for i in range(len(self.joint_vel_ids))]
             torques = self.Kp * (q_des - q) - self.Kd * qd
             torques = np.clip(torques, -self.torque_limit, self.torque_limit)
             self.data.ctrl[:] = torques
@@ -257,17 +281,17 @@ class Quadruped_Env(gym.Env):
         obs = self._get_obs()
         
         # Reward
-        reward, r_forward, r_orient, r_pose, r_smooth, r_ang_vel, air_time_reward,r_omega_xy,r_z_vel, r_no_contact,r_slip, r_clear, body_vel, ang_vel, k = self._compute_reward(torques, action, self.prev_action, self.prev_prev)
+        reward, r_forward, r_orient, r_pose, r_smooth, r_ang_vel,r_omega_xy,r_z_vel, r_no_contact,r_slip, r_clear, r_energy, r_knee_contact, body_vel, ang_vel, k = self._compute_reward(torques, action, self.prev_action, self.prev_prev)
         terminated = self._is_fallen()
         truncated = self.step_count >= self.max_steps
         if terminated or truncated:
             print(f"Forward Reward: {r_forward}")
-            print(f"Air time Penalty: {air_time_reward}")
+            print(f"Knee/Thigh Contact Penalty: {r_knee_contact}")
             print(f"Orientation Penalty: {r_orient}")
             print(f"Pose Penalty: {r_pose}")
             print(f"Angular(XY) Penalty: {r_omega_xy}")
             print(f"Smoothness Penalty: {r_smooth}")
-            #print(f"Height Penalty: {r_height}")
+            print(f"Energy Penalty: {r_energy}")
             print(f"Ang Vel Reward: {r_ang_vel}")
             print(f"Z Velocity penalty : {r_z_vel}")
             print(f"No contact Penalty: {r_no_contact}")
@@ -281,7 +305,6 @@ class Quadruped_Env(gym.Env):
             print(f"Curriculum Factor: {k}")
             print("------------------------")
             
-
         return obs, reward, terminated, truncated, {}
 
     def reset(self, seed=None, options=None):
@@ -320,16 +343,19 @@ class Quadruped_Env(gym.Env):
         self.prev_contacts = [False, False, False, False]
 
         # 2. Randomize Command (Target Velocity)
-        if self.total_timesteps * self.num_envs <= 10e6:
-            target_vx = np.random.uniform(0.3, 0.5)
+        if self.enable_curriculum:
+            if self.total_timesteps * self.num_envs <= 10e6:
+                target_vx = np.random.uniform(0.3, 0.5)
+            else:
+                target_vx = np.random.uniform(0.4, 1.0)
         else:
             target_vx = np.random.uniform(0.4, 1.0)
         self.command = np.array([target_vx, 0.0, 0.0]) 
 
         # 3. Reset Pose (Standing)
         self.data.qpos[7:19] = self.q_default
-        self.data.qpos[2] = 0.4  # Lift base
-        self.data.qpos[3:7] = [1, 0, 0, 0] # Upright quaternion
+        self.data.qpos[2] = 0.4  
+        self.data.qpos[3:7] = [1, 0, 0, 0] 
 
         # 4. Add Noise (Domain Randomization)
         self.data.qpos[7:19] += np.random.uniform(-0.05, 0.05, 12)
@@ -343,52 +369,53 @@ class Quadruped_Env(gym.Env):
         return obs, {}
     
     def _compute_reward(self, torques, action, prev_action, prev_prev):
-        body_vel = self.data.sensordata[self.body_lin_vel : self.body_lin_vel + 3]
 
-        qd = self.data.qvel[6:18]
-        q = self.data.qpos[7:19]
+        q = [self.data.sensordata[self.joint_ids[i]] for i in range(len(self.joint_ids))]
+        qd = [self.data.sensordata[self.joint_vel_ids[i]] for i in range(len(self.joint_vel_ids))]
+
+        body_vel = self.data.sensordata[self.adr_lin_vel : self.adr_lin_vel + 3]
+        ang_vel = self.data.sensordata[self.adr_ang_vel : self.adr_ang_vel + 3]
         
         forward_vel = body_vel[0]
         self.last_forward_vel = forward_vel
 
         #FORWARD VELOCITY REWARD
         error = (body_vel[0] - self.command[0])**2 + (body_vel[1] - self.command[1])**2
-        r_forward = 5.0 * np.exp(- 5*error)
+        r_forward = 6.0 * np.exp(- 5*error)
 
         #Angular Velocity Tracking 
-        ang_vel = self.data.sensordata[self.ang_vel_id : self.ang_vel_id + 3]
-        r_ang_vel = 1.5 * np.exp(- 5*(ang_vel[2] - self.target_ang_velocity[2])**2)
+        error_ang_vel = (ang_vel[2] - self.target_ang_velocity[2])**2
+        r_ang_vel = 1.0 * np.exp(- 5*error_ang_vel)
 
         #Height penalty
-        #z_length = self.data.qpos[2]
-        #r_height = - 5* (z_length - 0.35)**2
+        z_length = self.data.qpos[2]
+        r_height = - 20* (z_length - 0.35)**2
 
         #Z velocity Penalty
-        z_vel = self.data.qvel[2]
-        r_z_vel = -2* (z_vel)**2
+        z_vel = body_vel[2]
+        r_z_vel = -2* (z_vel - self.command[2])**2
 
         #Action Smoothness Penalty
         r_smooth = -1.0 * np.sum(np.square(action - prev_action)) 
 
         #Foot Contacts
-
-        c_fl = self._contact_state(self.contact_force_fl, 0, True)
-        c_fr = self._contact_state(self.contact_force_fr, 1, True)
-        c_rl = self._contact_state(self.contact_force_rl, 2, True)
-        c_rr = self._contact_state(self.contact_force_rr, 3, True)
+        c_fl = self._contact_state(self.adr_cf_fl, 0, True)
+        c_fr = self._contact_state(self.adr_cf_fr, 1, True)
+        c_rl = self._contact_state(self.adr_cf_rl, 2, True)
+        c_rr = self._contact_state(self.adr_cf_rr, 3, True)
 
         #Roll and pitch penalties 
-        r_omega_xy = - 2.0 * (ang_vel[0]**2 + ang_vel[1]**2)
+        r_omega_xy = - 0.1 * (ang_vel[0]**2 + ang_vel[1]**2)
 
         #Orientation Penalty
-        projected_gravity = self.data.sensordata[self.imu_orientation_id : self.imu_orientation_id + 4]
+        projected_gravity = self.data.sensordata[self.adr_imu_ori : self.adr_imu_ori + 4]
         w, x, y, z = projected_gravity
         g_x = 2*(x*z - w*y)
         g_y = 2*(y*z + w*x)
         g_z = 1 - 2*(x*x + y*y)
 
         gravity = np.array([g_x, g_y, g_z])
-        r_orient = - 1.5 * (np.sum(gravity[0]**2 + gravity[1]**2))
+        r_orient = - 0.5 * (np.sum(gravity[0]**2 + gravity[1]**2))
 
         #Joint Pose penalty
         r_pose = -0.3 * np.sum((q - self.q_default)**2)
@@ -421,41 +448,38 @@ class Quadruped_Env(gym.Env):
             v_xy = (velocity[0]**2 + velocity[1]**2)**0.5
             clearance_error += (height - self.target_clearance_height)**2 * (v_xy**0.5)
 
-        r_clear = -10.0 * clearance_error 
+        r_clear = -20.0 * clearance_error 
 
-        #Air time reward
-        air_time_reward = 0.0
+        #Knee and thigh Collision penalty
+        calf_thigh_ids = set(self.thigh_ids + self.calf_ids)
+        r_knee_contact = 0.0
+        for i in range(self.data.ncon):
+            contact = self.data.contact[i]
+            geom1_body = self.model.geom_bodyid[contact.geom1]
+            geom2_body = self.model.geom_bodyid[contact.geom2]
+            if geom1_body in calf_thigh_ids or geom2_body in calf_thigh_ids:
+                r_knee_contact -= 2.0
 
-        contacts = (c_fl, c_fr, c_rl, c_rr)
-
-        for i in range(len(contacts)):
-            if not contacts[i]:
-                self.air_time[i] += self.dt
-            else:
-                if not self.last_contact_state[i]:
-                    air_time_reward += 0.5 * np.exp(- 2* (self.air_time[i] - 0.5)**2)
-
-                self.air_time[i] = 0.0
-
-            self.last_contact_state[i] = contacts[i]
+        r_knee_contact = 0.05 * r_knee_contact
 
         #Energy Penalty
-        r_energy = - 0.0015 * np.sum(np.square(torques))
+        r_energy = - 0.0015 * np.sum(np.abs(torques * qd))
 
         #No contact Penalty
+        contacts = (c_fl, c_fr, c_rl, c_rr)
         r_no_contact = 0.0
         num_contacts = sum(contacts)
         if num_contacts == 0:
-            r_no_contact = -0.5
+            r_no_contact = -2.0
 
         #Curriculum term 
         k = self._get_curriculum()
 
-        penalties = r_smooth + r_pose + r_orient + r_omega_xy + r_z_vel + r_no_contact + r_slip + r_clear + r_energy
+        penalties = r_smooth + r_pose + r_slip + r_clear + r_energy + r_orient + r_omega_xy 
 
-        total = r_forward + r_ang_vel + air_time_reward + k * (penalties)
+        total = r_forward + r_ang_vel + r_z_vel + r_height + r_no_contact + r_knee_contact + k * (penalties)
 
-        return total, r_forward, r_orient, r_pose, r_smooth, r_ang_vel, air_time_reward,r_omega_xy, r_z_vel,r_no_contact, r_slip, r_clear, body_vel, ang_vel, k
+        return total, r_forward, r_orient, r_pose, r_smooth, r_ang_vel,r_omega_xy, r_z_vel,r_no_contact, r_slip, r_clear, r_energy,r_knee_contact, body_vel, ang_vel, k
 
     def _is_fallen(self):
         z_height = self.data.qpos[2]
