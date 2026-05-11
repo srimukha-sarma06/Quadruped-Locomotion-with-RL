@@ -42,7 +42,7 @@ if __name__ == '__main__':
 
     checkpoint = CheckpointCallback(
         save_freq=10_000_000 // num_envs,
-        save_path="./checkpoints/git_repo_3_retrain_2",
+        save_path="./checkpoints/git_repo_3_retrain_3",
         name_prefix="git_repo_3"
     )
 
@@ -67,7 +67,7 @@ if __name__ == '__main__':
         vf_coef=0.5,
         n_epochs=6,
         n_steps=2048,
-        batch_size=512,
+        batch_size=1024,
         policy_kwargs=policy_kwargs,
         max_grad_norm = 0.5,
         verbose=1,
@@ -75,7 +75,7 @@ if __name__ == '__main__':
     )
     try:
         model.learn(
-            total_timesteps=30_000_000,
+            total_timesteps=50_000_000,
             callback=[checkpoint, VelocityLogger(), eval_callback],
         )
     except Exception as e:
@@ -83,6 +83,6 @@ if __name__ == '__main__':
         raise
 
     finally:
-        model.save("git_repo_3_retrain_2")
-        env.save("git_repo_3_retrain_2.pkl")
+        model.save("git_repo_3_retrain_3")
+        env.save("git_repo_3_retrain_3.pkl")
 

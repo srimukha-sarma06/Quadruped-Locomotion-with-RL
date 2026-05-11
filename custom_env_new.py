@@ -68,6 +68,9 @@ class Quadruped_Env(gym.Env):
         #target angular velocity 
         self.target_ang_velocity = np.array([0.0, 0.0, 0.0])
 
+        #target orientation
+        self.target_orientation = np.array([0.0, 0.0, 1.0])
+
         #Joint ids
         self.adr_lin_vel    = self.model.sensor_adr[self.model.sensor("base_lin_vel").id]
         self.adr_ang_vel    = self.model.sensor_adr[self.model.sensor("base_ang_vel").id]
@@ -115,6 +118,10 @@ class Quadruped_Env(gym.Env):
 
         self.kd_leg = np.array([self.Kd_leg, self.Kd_leg, self.Kd_hip])
         self.Kd = np.tile(self.kd_leg, 4)
+
+        #torque monitoring 
+        self.torques = np.zeros(12)
+        self.prev_torques = np.zeros(12)
 
         assert self.model.nu == 12, "Expected 12 torque actuators"
 
@@ -207,10 +214,7 @@ class Quadruped_Env(gym.Env):
     def _get_curriculum(self):
         if self.enable_curriculum:
             t = self.total_timesteps * self.num_envs
-            if t <= 25e6:
-                k = 1 - np.cos(2 * np.pi * 1e-8 * t)
-            else:
-                k = 1
+            k = 1 - np.cos(np.pi * 1e-8 * t)
         else:
             k = 1
         return k
@@ -236,7 +240,7 @@ class Quadruped_Env(gym.Env):
         w, x, y, z = projected_gravity
         g_x = 2*(x*z - w*y)
         g_y = 2*(y*z + w*x)
-        g_z = 1 - 2*(x*x + y*y)
+        g_z = w**2 - x**2 - y**2 + z**2
 
         gravity = np.array([g_x, g_y, g_z])
 
@@ -259,12 +263,14 @@ class Quadruped_Env(gym.Env):
         action = np.clip(action, -1.0, 1.0) 
         q_des = self.q_default + action * self.q_range
 
+        self.prev_torques = self.torques.copy()
+
         for _ in range(20):
             q = [self.data.sensordata[self.joint_ids[i]] for i in range(len(self.joint_ids))]
             qd = [self.data.sensordata[self.joint_vel_ids[i]] for i in range(len(self.joint_vel_ids))]
-            torques = self.Kp * (q_des - q) - self.Kd * qd
-            torques = np.clip(torques, -self.torque_limit, self.torque_limit)
-            self.data.ctrl[:] = torques
+            self.torques = self.Kp * (q_des - q) - self.Kd * qd
+            self.torques = np.clip(self.torques, -self.torque_limit, self.torque_limit)
+            self.data.ctrl[:] = self.torques
             mujoco.mj_step(self.model, self.data)
 
         self.step_count += 1
@@ -275,13 +281,16 @@ class Quadruped_Env(gym.Env):
 
         self.prev_action = self.last_action.copy()
 
+        #torque difference
+        torque_diff = np.sqrt(np.mean((self.torques - self.prev_torques)**2))
+
         # FIX 1: Update action BEFORE observation
         self.last_action = action.copy()
         
         obs = self._get_obs()
         
         # Reward
-        reward, r_forward, r_pose, r_smooth, r_ang_vel,r_omega_xy,r_z_vel, r_height, r_clear, r_slip, body_vel, ang_vel = self._compute_reward(torques, action, self.prev_action, self.prev_prev)
+        reward, r_forward, r_pose, r_smooth, r_ang_vel,r_omega_xy,r_z_vel, r_height, r_clear, r_slip,r_energy, body_vel, ang_vel = self._compute_reward(action, self.prev_action, self.prev_prev)
         terminated = self._is_fallen()
         truncated = self.step_count >= self.max_steps
         if terminated or truncated:
@@ -294,8 +303,10 @@ class Quadruped_Env(gym.Env):
             print(f"Smoothness Penalty: {r_smooth}")
             print(f"Ang Vel Reward: {r_ang_vel}")
             print(f"Z Velocity penalty : {r_z_vel}")
-            print("------TOTAL REWARD------")
+            print(f"Energy Penalty: {r_energy}")
+            print("------TOTAL REWARD & Torques------")
             print(reward)
+            print(f"Torque Difference: {torque_diff}")
             print("------ANGULAR VELOCITY--")
             print(f"Angular Velocity : {ang_vel[0]}x, {ang_vel[1]}y, {ang_vel[2]}z")
             print("-----BODY VEL AND COMMAND VEL----")
@@ -332,6 +343,8 @@ class Quadruped_Env(gym.Env):
         self.kd_leg = np.array([self.Kd_leg, self.Kd_leg, self.Kd_hip])
         self.Kd = np.tile(self.kd_leg, 4)
 
+        #torque tracking
+
         # 1. Reset Internal State
         self.step_count = 0
         self.last_action = np.zeros(12)  # Clear history
@@ -363,7 +376,7 @@ class Quadruped_Env(gym.Env):
         obs = self._get_obs()
         return obs, {}
     
-    def _compute_reward(self, torques, action, prev_action, prev_prev):
+    def _compute_reward(self, action, prev_action, prev_prev):
 
         q = [self.data.sensordata[self.joint_ids[i]] for i in range(len(self.joint_ids))]
         qd = [self.data.sensordata[self.joint_vel_ids[i]] for i in range(len(self.joint_vel_ids))]
@@ -435,16 +448,36 @@ class Quadruped_Env(gym.Env):
 
         r_clear = -20.0 * clearance_error 
 
-        penalties = r_smooth + r_pose  + r_omega_xy + r_clear + r_slip
+        #Orientation error
+        '''
+        projected_gravity = self.data.sensordata[self.adr_imu_ori : self.adr_imu_ori + 4]
+        w, x, y, z = projected_gravity
+
+        #X,Y,Z components of the gravity vector using quat to 3D conversion formulas
+        
+        g_x = 2*(x*z - w*y)
+        g_y = 2*(w*x + y*z)
+        g_z = w**2 - x**2 - y**2 + z**2
+
+        gravity = np.array([g_x, g_y, g_z])
+
+        r_orient = - 0.5 * np.sum((self.target_orientation - gravity)**2)
+        '''
+
+        #energy penalty 
+        r_energy = -0.0015 * np.sum(np.abs(self.torques*qd))
+
+        penalties = r_smooth + r_pose  + r_omega_xy + r_clear + r_slip + r_energy
 
         total = r_forward + r_ang_vel + r_z_vel + r_height + penalties
 
-        return total, r_forward, r_pose, r_smooth, r_ang_vel,r_omega_xy, r_z_vel, r_height, r_clear, r_slip, body_vel, ang_vel
+        return total, r_forward, r_pose, r_smooth, r_ang_vel,r_omega_xy, r_z_vel, r_height, r_clear, r_slip,r_energy, body_vel, ang_vel
 
     def _is_fallen(self):
         z_height = self.data.qpos[2]
         roll, pitch = self._get_rpy()
         terminated = False
+        #Terminated if roll > 29 deg or pitch > 34 deg or base height < 0.18m
         if abs(roll) > np.deg2rad(29) or abs(pitch) > np.deg2rad(34) or z_height < 0.18:
             terminated = True
         return terminated

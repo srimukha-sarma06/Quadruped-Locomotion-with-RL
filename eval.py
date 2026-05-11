@@ -2,23 +2,21 @@ import mujoco
 import mujoco.viewer
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
-from custom_env_final import Quadruped_Env
+from custom_env_new import Quadruped_Env
 import time
 import numpy as np
 
 env = DummyVecEnv([lambda: Quadruped_Env(render_mode='human',
                                          xml_path='/media/srimukha-sarma/Windows-SSD/xtr_lair-main/src/robots/m2_metal_description/mujoco/flat_scene.xml')])
 
-env = VecNormalize.load('git_repo_3.pkl', env)
+env = VecNormalize.load('git_repo_3_retrain_2.pkl', env)
 
 env.training = False
 env.norm_reward = False
 
 env.set_attr("enable_curriculum", False)
 
-env.set_attr("command", np.array([0.5, 0.0, 0.0]))
-
-model = PPO.load('checkpoints/git_repo_3_retrain/git_repo_3_30000000_steps.zip', env=env, device="cpu")
+model = PPO.load('checkpoints/git_repo_3_retrain_3/git_repo_3_40000000_steps.zip', env=env, device="cpu")
 
 obs = env.reset()
 
