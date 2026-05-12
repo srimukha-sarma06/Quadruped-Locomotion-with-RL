@@ -1,6 +1,8 @@
 *.zip
 *.pkl
-__pycache__
+/__pycache__
 custom_env_final.py
-
-
+/.vscode
+/logs
+/ppo_logs_3
+/working_gaits
