@@ -401,7 +401,7 @@ class Quadruped_Env(gym.Env):
 
         #Height penalty
         z_length = self.data.qpos[2]
-        r_height = - 20* (z_length - 0.35)**2
+        r_height = - 20* (z_length - 0.28)**2
 
         #Z velocity Penalty
         z_vel = body_vel[2]
