@@ -9,7 +9,7 @@ class Quadruped_Env(gym.Env):
         super(Quadruped_Env, self).__init__()
 
         if xml_path is None:
-            xml_path = 'flat_scene.xml'
+            xml_path = '/media/srimukha-sarma/Windows-SSD/xtr_lair-main/src/robots/m2_metal_description/mujoco/flat_scene.xml'
 
         self.model = mujoco.MjModel.from_xml_path(xml_path)
         self.data = mujoco.MjData(self.model)
@@ -301,7 +301,7 @@ class Quadruped_Env(gym.Env):
         obs = self._get_obs()
         
         # Reward
-        reward, r_forward, r_pose, r_smooth, r_ang_vel,r_omega_xy,r_z_vel, r_height, r_clear, r_slip, body_vel, ang_vel = self._compute_reward(action, self.prev_action, self.prev_prev)
+        reward, r_forward, r_pose, r_smooth, r_ang_vel,r_omega_xy,r_z_vel, r_height, r_clear, r_slip,r_energy,r_orient, body_vel, ang_vel = self._compute_reward(action, self.prev_action, self.prev_prev)
         terminated = self._is_fallen()
         truncated = self.step_count >= self.max_steps
         if terminated or truncated:
@@ -314,6 +314,8 @@ class Quadruped_Env(gym.Env):
             print(f"Smoothness Penalty: {r_smooth}")
             print(f"Ang Vel Reward: {r_ang_vel}")
             print(f"Z Velocity penalty : {r_z_vel}")
+            print(f"Energy Penalty: {r_energy}")
+            print(f"Orientation Penalty: {r_orient}")
             print("------TOTAL REWARD & Torques------")
             print(reward)
             print(f"Torque Difference: {torque_diff}")
@@ -474,7 +476,7 @@ class Quadruped_Env(gym.Env):
         g_y = 2*(y*z + w*x)
         g_z = w**2 - x**2 - y**2 + z**2
         gravity = np.array([g_x, g_y, g_z])
-        
+
         r_orient = - 0.5 * np.sum((self.target_orientation - gravity)**2)
         
         #energy penalty 
@@ -484,7 +486,7 @@ class Quadruped_Env(gym.Env):
 
         total = r_forward + r_ang_vel + r_z_vel + r_height + penalties
 
-        return total, r_forward, r_pose, r_smooth, r_ang_vel,r_omega_xy, r_z_vel, r_height, r_clear, r_slip, body_vel, ang_vel
+        return total, r_forward, r_pose, r_smooth, r_ang_vel,r_omega_xy, r_z_vel, r_height, r_clear, r_slip,r_energy,r_orient, body_vel, ang_vel
 
     def _is_fallen(self):
         z_height = self.data.qpos[2]
