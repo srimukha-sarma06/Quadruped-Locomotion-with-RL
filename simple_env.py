@@ -132,11 +132,6 @@ class Quadruped_Env(gym.Env):
         #default command velocity
         self.command = np.array([0.6, 0.0, 0.0])
 
-        #phase reward
-        self.gait_freq = 1.5
-        self.phase = 0.0
-        self.phase_offsets = np.array([0.0, np.pi, np.pi, 0.0]) 
-
         self.site_ids = {
             "FL": mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, "FL_foot"),
             "FR": mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, "FR_foot"),
@@ -156,7 +151,7 @@ class Quadruped_Env(gym.Env):
 
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(12,), dtype=np.float32) #.Box for continuos and .Discrete for discrete
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf,
-                                            shape=(52,), dtype=np.float32)
+                                            shape=(53,), dtype=np.float32)
         
         self.reset()
 
@@ -216,20 +211,14 @@ class Quadruped_Env(gym.Env):
         site_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, site_name)
         return self.data.site_xpos[site_id][2]
     
-    def _get_curriculum(self):
-        if self.enable_curriculum:
-            t = self.total_timesteps * self.num_envs
-            k = 1 - np.cos(np.pi * 1e-8 * t)
-        else:
-            k = 1
-        return k
-    
     def _get_obs(self):
         qpos = [self.data.sensordata[self.joint_ids[i]] for i in range(len(self.joint_ids))]
         qvel = [self.data.sensordata[self.joint_vel_ids[i]] for i in range(len(self.joint_vel_ids))]
 
         base_lin_vel = self.data.sensordata[self.adr_lin_vel : self.adr_lin_vel + 3]
         base_ang_vel = self.data.sensordata[self.adr_ang_vel : self.adr_ang_vel + 3]
+
+        z_height = qpos[2]
 
         #Contact addresses 
         c_fl = self._contact_state(self.adr_cf_fl, 0, False)
@@ -242,20 +231,16 @@ class Quadruped_Env(gym.Env):
         commands = self.command
     
         projected_gravity = self.data.sensordata[self.adr_imu_ori : self.adr_imu_ori + 4]
-        w, x, y, z = projected_gravity
-        g_x = 2*(x*z - w*y)
-        g_y = 2*(y*z + w*x)
-        g_z = 1 - 2*(x*x + y*y)
-        gravity = np.array([g_x, g_y, g_z])
 
         last_action = self.last_action
 
         obs = np.concatenate([
             qpos,
             qvel,
+            z_height,
             base_ang_vel,
             base_lin_vel,
-            gravity,
+            projected_gravity,
             last_action,
             contacts,
             commands
@@ -294,19 +279,13 @@ class Quadruped_Env(gym.Env):
         obs = self._get_obs()
         
         # Reward
-        reward, r_forward, r_pose, r_smooth, r_ang_vel,r_omega_xy,r_z_vel, r_height, r_clear, r_slip, body_vel, ang_vel = self._compute_reward(action, self.prev_action, self.prev_prev)
+        reward, r_forward, r_height,r_energy, body_vel, ang_vel = self._compute_reward(action, self.prev_action, self.prev_prev)
         terminated = self._is_fallen()
         truncated = self.step_count >= self.max_steps
         if terminated or truncated:
             print(f"Forward Reward: {r_forward}")
-            print(f"Pose Penalty: {r_pose}")
-            print(f"Angular(XY) Penalty: {r_omega_xy}")
-            print(f"Clearance Penalty: {r_clear}")
-            print(f"Slip Penalty: {r_slip}")
             print(f"Height Penalty: {r_height}")
-            print(f"Smoothness Penalty: {r_smooth}")
-            print(f"Ang Vel Reward: {r_ang_vel}")
-            print(f"Z Velocity penalty : {r_z_vel}")
+            print(f"Energy Penalty: {r_energy}")
             print("------TOTAL REWARD & Torques------")
             print(reward)
             print(f"Torque Difference: {torque_diff}")
@@ -346,8 +325,7 @@ class Quadruped_Env(gym.Env):
         self.kd_leg = np.array([self.Kd_leg, self.Kd_leg, self.Kd_hip])
         self.Kd = np.tile(self.kd_leg, 4)
 
-        #reset phase 
-        self.phase = 0.0
+        #torque tracking
 
         # 1. Reset Internal State
         self.step_count = 0
@@ -358,11 +336,8 @@ class Quadruped_Env(gym.Env):
         self.prev_contacts = [False, False, False, False]
 
         # 2. Randomize Command (Target Velocity)
-        if self.total_timesteps * self.num_envs <= 10e6:
-            target_vx = np.random.uniform(0.3, 0.5)
-        else:
-            target_vx = np.random.uniform(0.4, 1.0)
-        self.command = np.array([target_vx, 0.0, 0.0]) 
+        target_vx = np.random.uniform(1.0, 1.1)
+        self.command[0] = target_vx
 
         # 3. Reset Pose (Standing)
         self.data.qpos[7:19] = self.q_default
@@ -392,80 +367,28 @@ class Quadruped_Env(gym.Env):
         self.last_forward_vel = forward_vel
 
         #FORWARD VELOCITY REWARD
-        error = (body_vel[0] - self.command[0])**2 + (body_vel[1] - self.command[1])**2
-        r_forward = 5.0 * np.exp(- 5*error)
+        r_forward = -0.55* np.abs(body_vel[0] - self.command[0])
 
-        #Angular Velocity Tracking 
-        error_ang_vel = (ang_vel[2] - self.target_ang_velocity[2])**2
-        r_ang_vel = 1.0 * np.exp(- 5*error_ang_vel)
+        #Orientation error
+        projected_gravity = self.data.sensordata[self.adr_imu_ori : self.adr_imu_ori + 4]
+
+        r_orient = - 1.2 * np.sqrt(np.sum((projected_gravity - self.target_orientation)**2))
+
+        #Alive reward
+        r_alive = 0.55* self.command[0]
+
+        #Energy penalty
+        r_energy =  - 55e-6 *np.sum(np.square(self.torques * qd))
 
         #Height penalty
         z_length = self.data.qpos[2]
-        r_height = - 20* (z_length - 0.35)**2
-
-        #Z velocity Penalty
-        z_vel = body_vel[2]
-        r_z_vel = -5 * (z_vel - self.command[2])**2
-
-        #Action Smoothness Penalty
-        r_smooth = -1.0 * np.sum(np.square(action - prev_action)) 
-
-        #Roll and pitch penalties 
-        r_omega_xy = - 0.5 * (ang_vel[0]**2 + ang_vel[1]**2)
-
-        #Joint Pose penalty
-        r_pose = -0.5 * np.sum((q - self.q_default)**2)
-
-        #Foot slip penalty
-        c_fl = self._contact_state(self.adr_cf_fl, 0, True)
-        c_fr = self._contact_state(self.adr_cf_fr, 1, True)
-        c_rl = self._contact_state(self.adr_cf_rl, 2, True)
-        c_rr = self._contact_state(self.adr_cf_rr, 3, True)
-
-        v_fl = self._site_velocity("FL")
-        v_fr = self._site_velocity("FR")
-        v_rr = self._site_velocity("RR")
-        v_rl = self._site_velocity("RL")
-
-        r_slip = 0.0
-
-        for contact, vel in ((c_fl, v_fl), (c_fr, v_fr), (c_rl, v_rl), (c_rr, v_rr)):
-            if contact:
-                slip_speed = vel[0]**2 + vel[1]**2
-                r_slip -= 0.07 * slip_speed
-
-        #Clearance Penalty
-        clearance_error = 0
-        contacts = [
-            (c_fl, "FL"),
-            (c_fr, "FR"),
-            (c_rl, "RL"),   
-            (c_rr, "RR")
-        ]
+        r_height = - 0.3* (z_length - 0.28)
         
-        for contact, name in contacts:
-            if not contact:
-                height = self._foot_height(name)
-                velocity = self._site_velocity(name)
-                v_xy = (velocity[0]**2 + velocity[1]**2)**0.5
-                clearance_error += (height - self.target_clearance_height)**2 * (v_xy**0.5)
+        penalties =  r_orient + r_energy
 
-        r_clear = -20.0 * clearance_error 
+        total = r_forward + r_height + r_alive + penalties
 
-        
-        #Orientation error
-        projected_gravity = self.data.sensordata[self.adr_imu_ori : self.adr_imu_ori + 4]
-        #X,Y,Z components of the gravity vector using quat to 3D conversion formulas
-        r_orient = - 0.5 * np.sum((self.target_orientation - projected_gravity)**2)
-        
-        #energy penalty 
-        r_energy = -0.0015 * np.sum(np.abs(self.torques*qd))
-        
-        penalties = r_smooth + r_pose  + r_omega_xy + r_clear + r_slip + r_energy + r_orient
-
-        total = r_forward + r_ang_vel + r_z_vel + r_height + penalties
-
-        return total, r_forward, r_pose, r_smooth, r_ang_vel,r_omega_xy, r_z_vel, r_height, r_clear, r_slip, body_vel, ang_vel
+        return total, r_forward, r_height,r_energy, body_vel, ang_vel
 
     def _is_fallen(self):
         z_height = self.data.qpos[2]

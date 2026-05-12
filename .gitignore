@@ -1,3 +1,6 @@
 *.zip
 *.pkl
+__pycache__
+custom_env_final.py
+
 

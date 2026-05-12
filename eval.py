@@ -16,7 +16,7 @@ env.norm_reward = False
 
 env.set_attr("enable_curriculum", False)
 
-model = PPO.load('checkpoints/git_repo_3_retrain_3/git_repo_3_40000000_steps.zip', env=env, device="cpu")
+model = PPO.load('checkpoints/git_repo_3_retrain_3/git_repo_3_50000000_steps.zip', env=env, device="cpu")
 
 obs = env.reset()
 

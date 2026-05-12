@@ -35,14 +35,14 @@ if __name__ == '__main__':
     )
 
     policy_kwargs = dict(
-        activation_fn = nn.LeakyReLU,
-        net_arch = dict(pi=[512, 256, 128], vf=[512, 256, 128]),
+        activation_fn = nn.Tanh,
+        net_arch = dict(pi=[128, 128], vf=[128, 128]),
         log_std_init = -2.0
     )
 
     checkpoint = CheckpointCallback(
         save_freq=10_000_000 // num_envs,
-        save_path="./checkpoints/git_repo_3_retrain_3",
+        save_path="./checkpoints/git_repo_3_retrain_4",
         name_prefix="git_repo_3"
     )
 
@@ -65,8 +65,8 @@ if __name__ == '__main__':
         ent_coef=0.002,         
         device="cpu",
         vf_coef=0.5,
-        n_epochs=6,
-        n_steps=2048,
+        n_epochs=10,
+        n_steps=4096,
         batch_size=1024,
         policy_kwargs=policy_kwargs,
         max_grad_norm = 0.5,
@@ -83,6 +83,6 @@ if __name__ == '__main__':
         raise
 
     finally:
-        model.save("git_repo_3_retrain_3")
-        env.save("git_repo_3_retrain_3.pkl")
+        model.save("git_repo_3_retrain_4")
+        env.save("git_repo_3_retrain_4.pkl")
 
