@@ -69,7 +69,7 @@ class Quadruped_Env(gym.Env):
         self.target_ang_velocity = np.array([0.0, 0.0, 0.0])
 
         #target orientation
-        self.target_orientation = np.array([0.0, 0.0, 0.0, 1.0])
+        self.target_orientation = np.array([0.0, 0.0, 1.0])
 
         #Joint ids
         self.adr_lin_vel    = self.model.sensor_adr[self.model.sensor("base_lin_vel").id]
@@ -242,10 +242,17 @@ class Quadruped_Env(gym.Env):
         commands = self.command
     
         projected_gravity = self.data.sensordata[self.adr_imu_ori : self.adr_imu_ori + 4]
+        norm_term = 0.0
+        for i in range(len(projected_gravity)):
+            norm_term += projected_gravity[i]**2
+        
+        norm_term = norm_term**0.5
+        projected_gravity = projected_gravity / norm_term
+
         w, x, y, z = projected_gravity
         g_x = 2*(x*z - w*y)
         g_y = 2*(y*z + w*x)
-        g_z = 1 - 2*(x*x + y*y)
+        g_z = w**2 - x**2 - y**2 + z**2
         gravity = np.array([g_x, g_y, g_z])
 
         last_action = self.last_action
@@ -455,7 +462,20 @@ class Quadruped_Env(gym.Env):
         
         #Orientation error
         projected_gravity = self.data.sensordata[self.adr_imu_ori : self.adr_imu_ori + 4]
-        r_orient = - 0.5 * np.sum((self.target_orientation - projected_gravity)**2)
+        norm_term = 0.0
+        for i in range(len(projected_gravity)):
+            norm_term += projected_gravity[i]**2
+        
+        norm_term = norm_term**0.5
+        projected_gravity = projected_gravity / norm_term
+
+        w, x, y, z = projected_gravity
+        g_x = 2*(x*z - w*y)
+        g_y = 2*(y*z + w*x)
+        g_z = w**2 - x**2 - y**2 + z**2
+        gravity = np.array([g_x, g_y, g_z])
+        
+        r_orient = - 0.5 * np.sum((self.target_orientation - gravity)**2)
         
         #energy penalty 
         r_energy = -0.0015 * np.sum(np.abs(self.torques*qd))
