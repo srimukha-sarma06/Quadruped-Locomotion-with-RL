@@ -455,7 +455,6 @@ class Quadruped_Env(gym.Env):
         
         #Orientation error
         projected_gravity = self.data.sensordata[self.adr_imu_ori : self.adr_imu_ori + 4]
-        #X,Y,Z components of the gravity vector using quat to 3D conversion formulas
         r_orient = - 0.5 * np.sum((self.target_orientation - projected_gravity)**2)
         
         #energy penalty 
