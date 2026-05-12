@@ -42,7 +42,7 @@ if __name__ == '__main__':
 
     checkpoint = CheckpointCallback(
         save_freq=10_000_000 // num_envs,
-        save_path="./checkpoints/git_repo_3_retrain_4",
+        save_path="./checkpoints/git_repo_3_retrain_2",
         name_prefix="git_repo_3"
     )
 
@@ -83,6 +83,6 @@ if __name__ == '__main__':
         raise
 
     finally:
-        model.save("git_repo_3_retrain_4")
-        env.save("git_repo_3_retrain_4.pkl")
+        model.save("git_repo_3_retrain_2")
+        env.save("git_repo_3_retrain_2.pkl")
 
