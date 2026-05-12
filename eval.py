@@ -7,7 +7,7 @@ import time
 import numpy as np
 
 env = DummyVecEnv([lambda: Quadruped_Env(render_mode='human',
-                                         xml_path='/media/srimukha-sarma/Windows-SSD/xtr_lair-main/src/robots/m2_metal_description/mujoco/flat_scene.xml')])
+                                         xml_path='flat_scene.xml')])
 
 env = VecNormalize.load('git_repo_3_retrain_2.pkl', env)
 
