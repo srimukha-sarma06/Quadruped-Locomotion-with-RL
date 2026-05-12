@@ -9,7 +9,7 @@ class Quadruped_Env(gym.Env):
         super(Quadruped_Env, self).__init__()
 
         if xml_path is None:
-            xml_path = '/media/srimukha-sarma/Windows-SSD/xtr_lair-main/src/robots/m2_metal_description/mujoco/flat_scene.xml'
+            xml_path = 'flat_scene.xml'
 
         self.model = mujoco.MjModel.from_xml_path(xml_path)
         self.data = mujoco.MjData(self.model)
